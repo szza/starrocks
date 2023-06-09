@@ -143,9 +143,6 @@ public class RestoreJob extends AbstractJob {
     @SerializedName(value = "downloadFinishedTime")
     private long downloadFinishedTime = -1;
 
-    @SerializedName(value = "restoreReplicationNum")
-    protected int restoreReplicationNum;
-
     // this 2 members is to save all newly restored objs
     // tbl name -> part
     @SerializedName(value = "restoredPartitions")
@@ -170,13 +167,12 @@ public class RestoreJob extends AbstractJob {
     }
 
     public RestoreJob(String label, String backupTs, long dbId, String dbName, BackupJobInfo jobInfo,
-                      boolean allowLoad, int restoreReplicationNum, long timeoutMs,
-                      GlobalStateMgr globalStateMgr, long repoId, BackupMeta backupMeta) {
+                      boolean allowLoad, long timeoutMs, GlobalStateMgr globalStateMgr,
+                      long repoId, BackupMeta backupMeta) {
         super(JobType.RESTORE, label, dbId, dbName, timeoutMs, globalStateMgr, repoId);
         this.backupTimestamp = backupTs;
         this.jobInfo = jobInfo;
         this.allowLoad = allowLoad;
-        this.restoreReplicationNum = restoreReplicationNum;
         this.state = RestoreJobState.PENDING;
         this.backupMeta = backupMeta;
     }
@@ -561,8 +557,7 @@ public class RestoreJob extends AbstractJob {
                                 } else {
                                     // this partition can be added to this table, set ids
                                     Partition restorePart = resetPartitionForRestore(localOlapTbl, remoteOlapTbl,
-                                            backupPartInfo.name,
-                                            restoreReplicationNum);
+                                            backupPartInfo.name);
                                     if (restorePart == null) {
                                         status = new Status(ErrCode.COMMON_ERROR, "Restored partition "
                                                 + backupPartInfo.name + "of " + localTbl.getName() + "is null");
@@ -670,7 +665,7 @@ public class RestoreJob extends AbstractJob {
     }
 
     protected Status resetTableForRestore(OlapTable remoteOlapTbl, Database db) {
-        return remoteOlapTbl.resetIdsForRestore(globalStateMgr, db, restoreReplicationNum);
+        return remoteOlapTbl.resetIdsForRestore(globalStateMgr, db, remoteOlapTbl.getDefaultReplicationNum());
     }
 
     protected void sendCreateReplicaTasks() {
@@ -777,15 +772,6 @@ public class RestoreJob extends AbstractJob {
     private boolean genFileMappingWhenBackupReplicasEqual(PartitionInfo localPartInfo, Partition localPartition,
                                                           Table localTbl,
                                                           BackupPartitionInfo backupPartInfo, BackupTableInfo tblInfo) {
-        if (localPartInfo.getReplicationNum(localPartition.getId()) != restoreReplicationNum) {
-            status = new Status(ErrCode.COMMON_ERROR, "Partition " + backupPartInfo.name
-                    + " in table " + localTbl.getName()
-                    + " has different replication num '"
-                    + localPartInfo.getReplicationNum(localPartition.getId())
-                    + "' with partition in repository, which is " + restoreReplicationNum);
-            return true;
-        }
-
         // No need to check range, just generate file mapping
         OlapTable localOlapTbl = (OlapTable) localTbl;
         genFileMapping(localOlapTbl, localPartition, tblInfo.id, backupPartInfo,
@@ -827,8 +813,7 @@ public class RestoreJob extends AbstractJob {
 
     // reset remote partition.
     // reset all id in remote partition, but DO NOT modify any exist globalStateMgr objects.
-    private Partition resetPartitionForRestore(OlapTable localTbl, OlapTable remoteTbl, String partName,
-                                               int restoreReplicationNum) {
+    private Partition resetPartitionForRestore(OlapTable localTbl, OlapTable remoteTbl, String partName) {
         Preconditions.checkState(localTbl.getPartition(partName) == null);
         Partition remotePart = remoteTbl.getPartition(partName);
         Preconditions.checkNotNull(remotePart);
@@ -863,7 +848,8 @@ public class RestoreJob extends AbstractJob {
             int remotetabletSize = remoteIdx.getTablets().size();
             remoteIdx.clearTabletsForRestore();
             // generate new table
-            status = remoteTbl.createTabletsForRestore(remotetabletSize, remoteIdx, globalStateMgr, restoreReplicationNum,
+            status = remoteTbl.createTabletsForRestore(remotetabletSize, remoteIdx, globalStateMgr,
+                    remoteTbl.getDefaultReplicationNum(),
                     visibleVersion, schemaHash, remotePart.getId());
             if (!status.ok()) {
                 return null;
@@ -940,7 +926,7 @@ public class RestoreJob extends AbstractJob {
             Range<PartitionKey> remoteRange = remotePartitionInfo.getRange(remotePartId);
             DataProperty remoteDataProperty = remotePartitionInfo.getDataProperty(remotePartId);
             localPartitionInfo.addPartition(restorePart.getId(), false, remoteRange,
-                    remoteDataProperty, (short) restoreReplicationNum,
+                    remoteDataProperty, remoteTbl.getDefaultReplicationNum(),
                     remotePartitionInfo.getIsInMemory(remotePartId));
             localTbl.addPartition(restorePart);
             if (modify) {
@@ -1068,10 +1054,8 @@ public class RestoreJob extends AbstractJob {
     protected void prepareDownloadTasks(List<SnapshotInfo> beSnapshotInfos, Database db, long beId, List<FsBroker> brokerAddrs,
                                         THdfsProperties hdfsProperties) {
         int totalNum = beSnapshotInfos.size();
-        int batchNum = totalNum;
-        if (Config.max_download_task_per_be > 0) {
-            batchNum = Math.min(totalNum, Config.max_download_task_per_be);
-        }
+        // each backend allot at most 3 tasks
+        int batchNum = Math.min(totalNum, 3);
         // each task contains several upload subtasks
         int taskNumPerBatch = Math.max(totalNum / batchNum, 1);
         LOG.debug("backend {} has {} batch, total {} tasks, {}",
@@ -1333,7 +1317,6 @@ public class RestoreJob extends AbstractJob {
         info.add(dbName);
         info.add(state.name());
         info.add(String.valueOf(allowLoad));
-        info.add(String.valueOf(restoreReplicationNum));
         info.add(getRestoreObjs());
         info.add(TimeUtils.longToTimeString(createTime));
         info.add(TimeUtils.longToTimeString(metaPreparedTime));
@@ -1510,8 +1493,6 @@ public class RestoreJob extends AbstractJob {
         out.writeLong(snapshotFinishedTime);
         out.writeLong(downloadFinishedTime);
 
-        out.writeInt(restoreReplicationNum);
-
         out.writeInt(restoredPartitions.size());
         for (Pair<String, Partition> entry : restoredPartitions) {
             Text.writeString(out, entry.first);
@@ -1565,8 +1546,6 @@ public class RestoreJob extends AbstractJob {
         metaPreparedTime = in.readLong();
         snapshotFinishedTime = in.readLong();
         downloadFinishedTime = in.readLong();
-
-        restoreReplicationNum = in.readInt();
 
         int size = in.readInt();
         for (int i = 0; i < size; i++) {

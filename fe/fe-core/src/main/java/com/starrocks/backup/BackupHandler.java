@@ -436,11 +436,11 @@ public class BackupHandler extends LeaderDaemon implements Writable {
         }
         if (t == TableType.OLAP) {
             restoreJob = new RestoreJob(stmt.getLabel(), stmt.getBackupTimestamp(),
-                    db.getId(), db.getOriginName(), jobInfo, stmt.allowLoad(), stmt.getReplicationNum(),
+                    db.getId(), db.getOriginName(), jobInfo, stmt.allowLoad(),
                     stmt.getTimeoutMs(), globalStateMgr, repository.getId(), backupMeta);
         } else {
             restoreJob = new LakeRestoreJob(stmt.getLabel(), stmt.getBackupTimestamp(),
-                    db.getId(), db.getOriginName(), jobInfo, stmt.allowLoad(), stmt.getReplicationNum(),
+                    db.getId(), db.getOriginName(), jobInfo, stmt.allowLoad(),
                     stmt.getTimeoutMs(), globalStateMgr, repository.getId(), backupMeta);
         }
         globalStateMgr.getEditLog().logRestoreJob(restoreJob);
