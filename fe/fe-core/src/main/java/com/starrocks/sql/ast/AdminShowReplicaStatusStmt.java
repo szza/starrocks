@@ -33,9 +33,10 @@ import java.util.List;
 // ADMIN SHOW REPLICA STATUS FROM example_db.example_table;
 public class AdminShowReplicaStatusStmt extends ShowStmt {
     public static final ImmutableList<String> TITLE_NAMES = new ImmutableList.Builder<String>()
-            .add("TabletId").add("ReplicaId").add("BackendId").add("Version").add("LastFailedVersion")
-            .add("LastSuccessVersion").add("CommittedVersion").add("SchemaHash").add("VersionNum")
-            .add("IsBad").add("IsSetBadForce").add("State").add("Status")
+            .add("TabletId").add("ReplicaId").add("BackendId").add("Version").add("MinReadableVersion")
+            .add("LastFailedVersion").add("LastSuccessVersion").add("CommittedVersion")
+            .add("SchemaHash").add("VersionNum").add("IsBad").add("IsSetBadForce")
+            .add("State").add("Status")
             .build();
 
     private final TableRef tblRef;

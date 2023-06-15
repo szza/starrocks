@@ -128,6 +128,7 @@ public class MetadataViewer {
                             row.add(String.valueOf(replica.getId()));
                             row.add(String.valueOf(replica.getBackendId()));
                             row.add(String.valueOf(replica.getVersion()));
+                            row.add(String.valueOf(replica.getMinReadableVersion()));
                             row.add(String.valueOf(replica.getLastFailedVersion()));
                             row.add(String.valueOf(replica.getLastSuccessVersion()));
                             row.add(String.valueOf(visibleVersion));
@@ -148,6 +149,7 @@ public class MetadataViewer {
                         for (int i = 0; i < count; ++i) {
                             List<String> row = Lists.newArrayList();
                             row.add(String.valueOf(tabletId));
+                            row.add("-1");
                             row.add("-1");
                             row.add("-1");
                             row.add("-1");
